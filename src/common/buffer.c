@@ -1,19 +1,3 @@
-/*****************************************************************************
- *   (c) 2020 Ledger SAS.
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *****************************************************************************/
-
 #include <stdint.h>   // uint*_t
 #include <stddef.h>   // size_t
 #include <stdbool.h>  // bool
@@ -59,7 +43,7 @@ bool buffer_seek_end(buffer_t *buffer, size_t offset) {
     return true;
 }
 
-bool buffer_read_u8(buffer_t *buffer, uint8_t *value) {
+bool buffer_peek_u8(buffer_t *buffer, uint8_t *value) {
     if (!buffer_can_read(buffer, 1)) {
         *value = 0;
 
@@ -72,7 +56,15 @@ bool buffer_read_u8(buffer_t *buffer, uint8_t *value) {
     return true;
 }
 
-bool buffer_read_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness) {
+bool buffer_read_u8(buffer_t *buffer, uint8_t *value) {
+    if (!buffer_peek_u8(buffer, value)) return false;
+    
+    buffer_seek_cur(buffer, 1);
+
+    return true;
+}
+
+bool buffer_peek_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness) {
     if (!buffer_can_read(buffer, 2)) {
         *value = 0;
 
@@ -81,6 +73,14 @@ bool buffer_read_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness)
 
     *value = ((endianness == BE) ? read_u16_be(buffer->ptr, buffer->offset)
                                  : read_u16_le(buffer->ptr, buffer->offset));
+
+    buffer_seek_cur(buffer, 2);
+
+    return true;
+}
+
+bool buffer_read_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness) {
+    if (!buffer_peek_u16(buffer, value, endianness)) return false;
 
     buffer_seek_cur(buffer, 2);
 
@@ -131,15 +131,15 @@ bool buffer_read_varint(buffer_t *buffer, uint64_t *value) {
     return true;
 }
 
-bool buffer_read_bip32_path(buffer_t *buffer, uint32_t *out, size_t out_len) {
+bool buffer_read_bip32_path(buffer_t *buffer, bip32_path_t *out) {
     if (!bip32_path_read(buffer->ptr + buffer->offset,
                          buffer->size - buffer->offset,
-                         out,
-                         out_len)) {
+                         out)) {
         return false;
     }
 
-    buffer_seek_cur(buffer, sizeof(*out) * out_len);
+    // 1 byte of path_length + 4*path_length of data
+    buffer_seek_cur(buffer, 1 + (sizeof(uint32_t) * out->length));
 
     return true;
 }

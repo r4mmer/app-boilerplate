@@ -1,6 +1,11 @@
 #pragma once
 
-#include "os.h"
+#include <stddef.h>   // size_t
+#include <stdbool.h>  // bool
+#include <stdint.h>   // uint*_t
+
+#include "../types.h"
+#include "../common/buffer.h"
 
 /**
  * Handler for GET_APP_NAME command. Send APDU response with ASCII
@@ -11,4 +16,4 @@
  * @return zero or positive integer if success, negative integer otherwise.
  *
  */
-int handler_get_app_name(void);
+int handler_get_address(buffer_t *cdata);
