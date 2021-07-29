@@ -81,6 +81,10 @@ void read_tx_data(buffer_t *cdata) {
         // if an error occurs reading
         THROW(SW_WRONG_DATA_LENGTH);
     }
+
+    if (G_context.tx_info.outputs_len > MAX_NUM_TX_OUTPUTS) {
+        THROW(SW_TX_PARSING_FAIL);
+    }
 }
 
 void sighash_all_hash(buffer_t *cdata) {
