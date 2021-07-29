@@ -61,24 +61,22 @@ int apdu_dispatcher(const command_t *cmd) {
                 (cmd->p1 == SIGN_TX_P1_DONE && cmd->p2 != SIGN_TX_P2_DONE)) {   //
                 return io_send_sw(SW_WRONG_P1P2);
             }
-            // if ((cmd->p1 == P1_START && cmd->p2 != P2_MORE) ||  //
-            //     cmd->p1 > P1_MAX ||                             //
-            //     (cmd->p2 != P2_LAST && cmd->p2 != P2_MORE)) {
-            //     return io_send_sw(SW_WRONG_P1P2);
-            // }
-
-            // XXX: maybe validate data_len for each command?
-            // if (!cmd->data) {
-            //     return io_send_sw(SW_WRONG_DATA_LENGTH);
-            // }
 
             buf.ptr = cmd->data;
             buf.size = cmd->lc;
             buf.offset = 0;
 
-            // TODO: new handler call sign
+            if ((cmd->p1 == SIGN_TX_P1_DATA && !cmd->data) ||
+                (cmd->p1 == SIGN_TX_P1_SIGN && !cmd->data) ||
+                (cmd->p1 == SIGN_TX_P1_DONE && cmd->data)) {
+                // The data length is variable on each stage which requires data.
+                // so we will just test for existence or not of data
+                return io_send_sw(SW_WRONG_DATA_LENGTH);
+            } else if (cmd->p1 == SIGN_TX_P1_DONE && cmd->data) {
+
+            }
+
             return handler_sign_tx(&buf, (sing_tx_stage_e) cmd->p1, cmd->p2);
-            // return handler_sign_tx(&buf, cmd->p1, (bool) (cmd->p2 & 0x80));
         default:
             return io_send_sw(SW_INS_NOT_SUPPORTED);
     }

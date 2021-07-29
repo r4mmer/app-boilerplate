@@ -55,6 +55,8 @@ DEFINES += UNUSED\(x\)=\(void\)x
 # Should be included from Makefile.conf.cx in SDK
 # DEFINES += HAVE_ECC HAVE_SECP256K1_CURVE HAVE_ECC_WEIERSTRASS HAVE_HASH HAVE_SHA3
 
+
+# XXX: configure this properly if Nano X compatibility is desired
 # ifeq ($(TARGET_NAME),TARGET_NANOX)
 #     DEFINES += IO_SEPROXYHAL_BUFFER_SIZE_B=300
 #     DEFINES += HAVE_BLE BLE_COMMAND_TIMEOUT_MS=2000 HAVE_BLE_APDU

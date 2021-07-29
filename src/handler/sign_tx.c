@@ -19,8 +19,8 @@
 #include "../transaction/deserialize.h"
 
 
-bool verify_change_output(tx_output_t output, uint32_t *bip32_path, uint8_t bip32_len) {
-    uint8_t hash[20];
+bool verify_address(tx_output_t output, uint32_t *bip32_path, uint8_t bip32_len) {
+    uint8_t hash[PUBKEY_HASH_LEN];
     cx_ecfp_public_key_t public_key;
     cx_ecfp_private_key_t private_key;
     uint8_t chain_code[32];
@@ -36,7 +36,7 @@ bool verify_change_output(tx_output_t output, uint32_t *bip32_path, uint8_t bip3
     explicit_bzero(&chain_code, sizeof(chain_code));
 
     // 0 means equals
-    return memcmp(hash, output.pubkey_hash, 20) == 0;
+    return memcmp(hash, output.pubkey_hash, PUBKEY_HASH_LEN) == 0;
 }
 
 void read_change_output_info(buffer_t *cdata) {
@@ -44,34 +44,36 @@ void read_change_output_info(buffer_t *cdata) {
     uint8_t tmp;
 
     // 1 byte for has_change_output and bip32 path len
-    if (!buffer_read_u8(cdata, &tmp)) THROW(SW_WRONG_DATA_LENGTH);
+    if (!buffer_read_u8(cdata, &tmp)) {
+        THROW(SW_WRONG_DATA_LENGTH);
+    }
 
+    // The first bit indicates the existence of a change output
     G_context.tx_info.has_change_output = (bool) tmp & 0x80;
 
     if (G_context.tx_info.has_change_output) {
         // 1 byte for change output index
-        if (!buffer_read_u8(cdata, &G_context.tx_info.change_output_index)) THROW(SW_WRONG_DATA_LENGTH);
+        if (!buffer_read_u8(cdata, &G_context.tx_info.change_output_index)) {
+            THROW(SW_WRONG_DATA_LENGTH);
+        }
     }
-
+    // the remainder of the first byte was used to represent the bip32 path length of the change path
     buffer[0] = tmp & 0x0F;
     if(buffer[0] > MAX_BIP32_PATH || !buffer_move(cdata, buffer+1, 4*buffer[0])) {
         THROW(SW_WRONG_DATA_LENGTH);
     }
 
-    buffer_t bufdata = {.ptr = buffer, .size=(size_t)(1+(4*buffer[0])), .offset = 0};
+    buffer_t bufdata = {
+        .ptr = buffer,
+        .size=(size_t) ( 1 + ( 4 * buffer[0] ) ),
+        .offset = 0
+    };
 
     // buffer holds the serialized bip32 path that was read from cdata
     if (!buffer_read_bip32_path(&bufdata, &G_context.tx_info.change_bip32_path)) THROW(SW_WRONG_DATA_LENGTH);
 }
 
 void read_tx_data(buffer_t *cdata) {
-    // // read version bytes (Big Endian)
-    // buffer_read_u16(cdata, G_context.tx_info.tx_version, BE);
-    // // read number of tokens, inputs and outputs (respectifully)
-    // buffer_read_u8(cdata, G_context.tx_info.remaining_tokens);
-    // buffer_read_u8(cdata, G_context.tx_info.remaining_inputs);
-    // buffer_read_u8(cdata, G_context.tx_info.outputs_len);
-
     if (!(buffer_read_u16(cdata, &G_context.tx_info.tx_version, BE) && // read version bytes (Big Endian)
         buffer_read_u8(cdata, &G_context.tx_info.remaining_tokens) && // read number of tokens, inputs and outputs, respectively
         buffer_read_u8(cdata, &G_context.tx_info.remaining_inputs) &&
@@ -81,7 +83,7 @@ void read_tx_data(buffer_t *cdata) {
     }
 }
 
-void copy_sighash_all(buffer_t *cdata) {
+void sighash_all_hash(buffer_t *cdata) {
     // cx_hash returns the size of the hash after adding the data, we can safely ignore it
 
     cx_hash(
@@ -96,12 +98,10 @@ void copy_sighash_all(buffer_t *cdata) {
 bool sign_tx_with_key() {
     // the bip32 path and bip32 path length should be on the global context when calling this method.
 
-
     cx_ecfp_private_key_t private_key = {0};
     cx_ecfp_public_key_t public_key = {0};
 
     uint8_t chain_code[32];
-    uint8_t hash_160[20];
 
     derive_private_key(&private_key, chain_code, G_context.bip32_path.path, G_context.bip32_path.length);
     init_public_key(&private_key, &public_key);
@@ -109,9 +109,9 @@ bool sign_tx_with_key() {
     if (G_context.tx_info.sighash_all[0] == '\0') {
         // finish sha256 from data
         cx_hash(&G_context.tx_info.sha256.header, CX_LAST, G_context.tx_info.sighash_all, 0, G_context.tx_info.sighash_all, 32);
+        // now get second sha256
         cx_sha256_init(&G_context.tx_info.sha256);
         cx_hash(&G_context.tx_info.sha256.header, CX_LAST, G_context.tx_info.sighash_all, 32, G_context.tx_info.sighash_all, 32);
-        // now get second sha256
     }
 
     uint8_t out[256] = {0};
@@ -141,13 +141,14 @@ void _decode_next_element() {
         G_context.tx_info.elem_type = ELEM_TOKEN_UID;
         memmove(G_context.tx_info.buffer, G_context.tx_info.buffer + TOKEN_UID_LEN, G_context.tx_info.buffer_len);
     } else if(G_context.tx_info.remaining_inputs > 0) {
-        // read input
+        // can read input?
         if (G_context.tx_info.buffer_len < TX_INPUT_LEN) {
             THROW(TX_STATE_PARTIAL);
         }
+        // we require input to have no data, since we are signing all data received (sighash_all must have no data)
+        // other than this check, we can ignore the input
         uint16_t input_val = read_u16_be(G_context.tx_info.buffer, 33);
         if (input_val>0) {
-            // we require input to have no data, since we are signing all data received (sighash_all must have no data)
             THROW(TX_STATE_ERR);
         }
         // reading input
@@ -167,7 +168,9 @@ void _decode_next_element() {
     } else {
         // we reached the end of the data we should read, the buffer should be empty
         // if the buffer is not empty something went wrong
-        if (G_context.tx_info.buffer_len > 0) THROW(TX_STATE_ERR);
+        if (G_context.tx_info.buffer_len > 0) {
+            THROW(TX_STATE_ERR);
+        }
         THROW(TX_STATE_FINISHED);
     }
 
@@ -185,7 +188,7 @@ void _decode_next_element() {
             G_context.tx_info.has_change_output &&
             G_context.tx_info.change_output_index == G_context.tx_info.decoded_output.index) {
                 // verify change
-                if (!verify_change_output(
+                if (!verify_address(
                     G_context.tx_info.decoded_output,
                     G_context.tx_info.change_bip32_path.path,
                     G_context.tx_info.change_bip32_path.length)) {
@@ -214,6 +217,8 @@ tx_decoder_state_e decode_next_element() {
     return result;
 }
 
+// Callback of button to confirm current decoded_output
+// Will decode and display next if ready
 void confirm_tx_cb(bool choice) {
     if (!choice) {
         // cancel everything if user denies an output
@@ -258,6 +263,8 @@ void init_sign_tx_ctx() {
 }
 
 bool receive_data(buffer_t *cdata, uint8_t chunk) {
+    // The transaction will be divided into chunks of data
+    // each chunk will be numbered, chunk==0 means this is the start of the data.
     if (chunk == 0) {
         if (G_context.state == STATE_RECV_DATA) {
             // sent first chunk twice? return error
@@ -267,20 +274,17 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
         init_sign_tx_ctx();
         // read change output and sighash
         read_change_output_info(cdata);
-        // copy_sighash_all won't move cdata.offset
-        copy_sighash_all(cdata);
+        // sighash_all_hash won't move cdata.offset
+        sighash_all_hash(cdata);
         read_tx_data(cdata);
 
         if(!buffer_move(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
         G_context.tx_info.buffer_len = cdata->size - cdata->offset;
-        // return io_send_sw(SW_OK);
-        // check if user has already approved every needed info
-        // TODO ret: cannot receive more data after user approval
     } else {
         // copy sighash_all data to sha256 context
-        copy_sighash_all(cdata);
+        sighash_all_hash(cdata);
         // move the same data to decode buffer
         if(!buffer_move(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
             THROW(SW_WRONG_DATA_LENGTH);
@@ -311,6 +315,9 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
 int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
 
     // switch(stage) actions for each stage
+    // - SIGN_TX_STAGE_DONE: signals the end of the call
+    // - SIGN_TX_STAGE_SIGN: TX was received and approved by user, caller requests signing
+    // - SIGN_TX_STAGE_DATA: Receiving TX in chunks
     switch (stage) {
         case SIGN_TX_STAGE_DONE:
             // Caller is done with this request, cleanup and return SW_OK.
@@ -350,74 +357,3 @@ int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
 
     return 0;
 }
-
-// 
-// int old_handler_sign_tx(buffer_t *cdata, uint8_t chunk, bool more) {
-//     if (chunk == 0) {  // first APDU, parse BIP32 path
-//         explicit_bzero(&G_context, sizeof(G_context));
-//         G_context.req_type = CONFIRM_TRANSACTION;
-//         G_context.state = STATE_NONE;
-
-//         if (!buffer_read_u8(cdata, &G_context.bip32_path_len) ||
-//             !buffer_read_bip32_path(cdata,
-//                                     G_context.bip32_path,
-//                                     (size_t) G_context.bip32_path_len)) {
-//             return io_send_sw(SW_WRONG_DATA_LENGTH);
-//         }
-
-//         return io_send_sw(SW_OK);
-//     } else {  // parse transaction
-//         if (G_context.req_type != CONFIRM_TRANSACTION) {
-//             return io_send_sw(SW_BAD_STATE);
-//         }
-
-//         if (more) {  // more APDUs with transaction part
-//             if (G_context.tx_info.raw_tx_len + cdata->size > MAX_TX_LEN &&  //
-//                 !buffer_move(cdata,
-//                              G_context.tx_info.raw_tx + G_context.tx_info.raw_tx_len,
-//                              cdata->size)) {
-//                 return io_send_sw(SW_WRONG_TX_LENGTH);
-//             }
-
-//             G_context.tx_info.raw_tx_len += cdata->size;
-
-//             return io_send_sw(SW_OK);
-//         } else {  // last APDU, let's parse and sign
-//             if (G_context.tx_info.raw_tx_len + cdata->size > MAX_TX_LEN ||  //
-//                 !buffer_move(cdata,
-//                              G_context.tx_info.raw_tx + G_context.tx_info.raw_tx_len,
-//                              cdata->size)) {
-//                 return io_send_sw(SW_WRONG_TX_LENGTH);
-//             }
-
-//             G_context.tx_info.raw_tx_len += cdata->size;
-
-//             buffer_t buf = {.ptr = G_context.tx_info.raw_tx,
-//                             .size = G_context.tx_info.raw_tx_len,
-//                             .offset = 0};
-
-//             parser_status_e status = transaction_deserialize(&buf, &G_context.tx_info.transaction);
-//             PRINTF("Parsing status: %d.\n", status);
-//             if (status != PARSING_OK) {
-//                 return io_send_sw(SW_TX_PARSING_FAIL);
-//             }
-
-//             G_context.state = STATE_PARSED;
-
-//             cx_sha3_t keccak256;
-//             cx_keccak_init(&keccak256, 256);
-//             cx_hash((cx_hash_t *) &keccak256,
-//                     CX_LAST,
-//                     G_context.tx_info.raw_tx,
-//                     G_context.tx_info.raw_tx_len,
-//                     G_context.tx_info.m_hash,
-//                     sizeof(G_context.tx_info.m_hash));
-
-//             PRINTF("Hash: %.*H\n", sizeof(G_context.tx_info.m_hash), G_context.tx_info.m_hash);
-
-//             return ui_display_transaction();
-//         }
-//     }
-
-//     return 0;
-// }

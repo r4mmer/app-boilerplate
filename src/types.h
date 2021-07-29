@@ -23,8 +23,8 @@ typedef enum {
  */
 typedef enum {
     GET_VERSION = 0x03,     /// version of the application
-    GET_ADDRESS = 0x04,     /// name of the application
-    GET_XPUB = 0x05,        /// public key of corresponding BIP32 path
+    GET_ADDRESS = 0x04,     /// get address from BIP32 path
+    GET_XPUB = 0x05,        /// XPUB of corresponding BIP32 path
     SIGN_TX = 0x06          /// sign transaction with BIP32 path
 } command_e;
 
@@ -84,8 +84,6 @@ typedef struct {
 
     bool has_change_output;
     uint8_t change_output_index;
-    // uint8_t change_bip32_len;
-    // uint32_t change_bip32_path[MAX_BIP32_PATH];
     bip32_path_t change_bip32_path;
     // tx
     uint16_t tx_version;
@@ -97,14 +95,6 @@ typedef struct {
     uint8_t elem_type;
     uint8_t current_output;
     tx_output_t decoded_output;
-
-    // display value
-    unsigned char info[70]; // address + HTR value
-    uint8_t display_index;
-    // NULL terminated string for display
-    char line1[15];
-    char line2[12 + 1]; // MAX_SCREEN_LEN(12) + 1
-
 } sign_tx_ctx_t;
 
 /**

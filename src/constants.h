@@ -6,26 +6,36 @@
 #define CLA 0xE0
 
 /**
- * Length of APPNAME variable in the Makefile.
- */
-#define APPNAME_LEN (sizeof(APPNAME) - 1)
-
-/**
  * Maximum length of MAJOR_VERSION || MINOR_VERSION || PATCH_VERSION.
  */
 #define APPVERSION_LEN 3
 
 /**
- * Maximum length of application name.
+ * Address length
  */
-#define MAX_APPNAME_LEN 64
+#define ADDRESS_LEN 25
 
 /**
- * Maximum signature length (bytes).
+ * B58 encoded address length
  */
-#define MAX_DER_SIG_LEN 72
+#define B58_ADDRESS_LEN 34
 
 /**
- * Exponent used to convert mBOL to BOL unit (N BOL = N * 10^3 mBOL).
+ * Token UID length
  */
-#define EXPONENT_SMALLEST_UNIT 3
+#define TOKEN_UID_LEN 32
+
+/**
+ * Tx input length
+ */
+#define TX_INPUT_LEN 35
+
+/**
+ * Pubkey hash length
+ */
+#define PUBKEY_HASH_LEN 20
+
+/**
+ * Maximum number of outputs on a transaction.
+ */
+#define MAX_NUM_TX_OUTPUTS 100

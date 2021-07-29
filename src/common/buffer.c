@@ -139,7 +139,7 @@ bool buffer_read_bip32_path(buffer_t *buffer, bip32_path_t *out) {
     }
 
     // 1 byte of path_length + 4*path_length of data
-    buffer_seek_cur(buffer, 1 + (sizeof(uint32_t) * out->length));
+    buffer_seek_cur(buffer, 1 + (sizeof(out->path[0]) * out->length));
 
     return true;
 }

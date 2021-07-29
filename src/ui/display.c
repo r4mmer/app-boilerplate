@@ -1,7 +1,6 @@
 #pragma GCC diagnostic ignored "-Wformat-invalid-specifier"  // snprintf
 #pragma GCC diagnostic ignored "-Wformat-extra-args"         // snprintf
 
-// #include <stdbool.h>  // bool
 #include <stdint.h>
 #include <string.h>
 
@@ -12,16 +11,12 @@
 #include "display.h"
 #include "constants.h"
 #include "../globals.h"
-// #include "../io.h"
 #include "../sw.h"
 #include "action/validate.h"
-// #include "../transaction/types.h"
-// #include "../common/bip32.h"
 #include "../common/format.h"
 
 #include "../hathor.h"
 
-// #include "../types.h"
 #include "../common/base58.h"
 
 static action_validate_cb g_validate_callback;
@@ -98,7 +93,7 @@ UX_STEP_NOCB(ux_display_confirm_step,
 // sign_tx confirm output
 UX_FLOW(ux_display_tx_output_flow,
         &ux_display_review_output_step, // Output <curr>/<total>
-        &ux_display_address_step,       // pubkey_hash
+        &ux_display_address_step,       // address
         &ux_display_amount_step,        // HTR <value>
         &ux_display_approve_step,       // accept => decode next component and redisplay if needed
         &ux_display_reject_step);       // reject => return error
@@ -235,7 +230,7 @@ int ui_display_confirm_address() {
     uint8_t address[ADDRESS_LEN] = {0};
     char b58address[B58_ADDRESS_LEN] = {0};
     // hash raw_public_key
-    uint8_t buffer[32] = {0};
+    uint8_t buffer[20] = {0};
     // compress_public_key
     uint8_t compressed_pubkey[65];
     memmove(compressed_pubkey, G_context.pk_info.raw_public_key, 65);

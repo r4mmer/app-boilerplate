@@ -6,6 +6,7 @@
 #include "os.h"
 
 #include "hathor.h"
+#include "constants.h"
 
 // #include "transaction/types.h"
 
@@ -42,7 +43,7 @@ void hash160(uint8_t *in, size_t inlen, uint8_t *out) {
     cx_sha256_init(&u.shasha);
     cx_hash(&u.shasha.header, CX_LAST, in, inlen, buffer, 32);
     cx_ripemd160_init(&u.riprip);
-    cx_hash(&u.riprip.header, CX_LAST, buffer, 32, out, 32);
+    cx_hash(&u.riprip.header, CX_LAST, buffer, 32, out, 20);
 }
 
 void compress_public_key(uint8_t *value) {
@@ -53,7 +54,7 @@ void address_from_pubkey_hash(const uint8_t *public_key_hash, uint8_t *out) {
     uint8_t buffer[32] = {0};
     // prepend version
     out[0] = P2PKH_VERSION_BYTE;
-    memmove(out+1, public_key_hash, 20);
+    memmove(out+1, public_key_hash, PUBKEY_HASH_LEN);
     // sha256d of above
     sha256d(out, 21, buffer);
     // grab first 4 bytes (checksum)
@@ -61,7 +62,7 @@ void address_from_pubkey_hash(const uint8_t *public_key_hash, uint8_t *out) {
 }
 
 void address_from_pubkey(cx_ecfp_public_key_t *public_key, uint8_t *out) {
-    uint8_t buffer[32] = {0};
+    uint8_t buffer[PUBKEY_HASH_LEN] = {0};
     // compress_public_key
     compress_public_key(public_key->W);
     // hash160
@@ -77,7 +78,6 @@ void derive_private_key(cx_ecfp_private_key_t *private_key,
     uint32_t full_path[2+bip32_path_len];
     uint8_t raw_private_key[32] = {0};
 
-    // explicit_bzero(&full_path, sizeof(uint32_t)*(2+bip32_path_len));
     init_bip32_full_path(bip32_path, bip32_path_len, full_path);
 
     BEGIN_TRY {
@@ -108,46 +108,3 @@ void init_public_key(cx_ecfp_private_key_t *private_key, cx_ecfp_public_key_t *p
     // generate corresponding public key
     cx_ecfp_generate_pair(CX_CURVE_256K1, public_key, private_key, 1);
 }
-
-// int crypto_sign_message() {
-//     cx_ecfp_private_key_t private_key = {0};
-//     uint8_t chain_code[32] = {0};
-//     uint32_t info = 0;
-//     int sig_len = 0;
-
-//     // derive private key according to BIP32 path
-//     crypto_derive_private_key(&private_key,
-//                               chain_code,
-//                               G_context.bip32_path,
-//                               G_context.bip32_path_len);
-
-//     BEGIN_TRY {
-//         TRY {
-//             sig_len = cx_ecdsa_sign(&private_key,
-//                                     CX_RND_RFC6979 | CX_LAST,
-//                                     CX_SHA256,
-//                                     G_context.tx_info.m_hash,
-//                                     sizeof(G_context.tx_info.m_hash),
-//                                     G_context.tx_info.signature,
-//                                     sizeof(G_context.tx_info.signature),
-//                                     &info);
-//             PRINTF("Signature: %.*H\n", sig_len, G_context.tx_info.signature);
-//         }
-//         CATCH_OTHER(e) {
-//             THROW(e);
-//         }
-//         FINALLY {
-//             explicit_bzero(&private_key, sizeof(private_key));
-//         }
-//     }
-//     END_TRY;
-
-//     if (sig_len < 0) {
-//         return -1;
-//     }
-
-//     G_context.tx_info.signature_len = sig_len;
-//     G_context.tx_info.v = (uint8_t)(info & CX_ECCINFO_PARITY_ODD);
-
-//     return 0;
-// }

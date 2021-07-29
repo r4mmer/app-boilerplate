@@ -1,12 +1,10 @@
 #include <stdint.h>  // uint*_t
 
 #include "get_address.h"
-#include "../constants.h"
 #include "../globals.h"
 #include "../io.h"
 #include "../sw.h"
 #include "../types.h"
-#include "../hathor.h"
 #include "../ui/display.h"
 #include "common/buffer.h"
 
@@ -20,7 +18,4 @@ int handler_get_address(buffer_t *cdata) {
     }
 
     return ui_display_confirm_address();
-    // buffer_t rdata = {.ptr = (uint8_t *) PIC(APPNAME), .size = APPNAME_LEN, .offset = 0};
-
-    // return io_send_response(&rdata, SW_OK);
 }

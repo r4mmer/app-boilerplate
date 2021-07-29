@@ -1,4 +1,4 @@
-#if !defined(OPCODES_H)
+#ifndef OPCODES_H
 #define OPCODES_H
 
 #define OP_DUP          0x76

@@ -8,6 +8,7 @@
 // #include "cx.h"
 #include "../sw.h"
 // #include "../common/read.h"
+#include "constants.h"
 #include "../common/buffer.h"
 
 /**
@@ -17,12 +18,12 @@
  *   [OP_DUP, OP_HASH160, pubkey_hash_len, pubkey_hash, OP_EQUALVERIFY, OP_CHECKSIG]
  */
 void validate_p2pkh_script(buffer_t *in) {
-    uint8_t p2pkh[] = {OP_DUP, OP_HASH160, 20, OP_EQUALVERIFY, OP_CHECKSIG};
+    uint8_t p2pkh[] = {OP_DUP, OP_HASH160, PUBKEY_HASH_LEN, OP_EQUALVERIFY, OP_CHECKSIG};
     if (in->size - in->offset < 25) {
         THROW(SW_TX_PARSING_FAIL);
     }
 
-    if (memcmp(p2pkh, in->ptr, 3) != 0 || memcmp(p2pkh+3, in->ptr+23, 2) != 0) {
+    if (memcmp(p2pkh, in->ptr, 3) != 0 || memcmp(p2pkh+3, in->ptr + PUBKEY_HASH_LEN + 3, 2) != 0) {
         THROW(SW_TX_PARSING_FAIL);
     }
 }
@@ -61,7 +62,7 @@ size_t parse_output(uint8_t *in, size_t inlen, tx_output_t *output) {
     // validate script and extract pubkey hash
     validate_p2pkh_script(&buf);
     // validate already asserted the length for this extraction
-    memmove(output->pubkey_hash, buf.ptr + buf.offset + 3, 20);
+    memmove(output->pubkey_hash, buf.ptr + buf.offset + 3, PUBKEY_HASH_LEN);
     if(!buffer_seek_cur(&buf, script_len)) {
         THROW(SW_TX_PARSING_FAIL);
     }
