@@ -34,7 +34,9 @@ void derive_xpub() {
     memmove(G_context.pk_info.chain_code, chain_code, 32);
 
     // derive parent
-    memmove(parent_path, G_context.bip32_path.path, G_context.bip32_path.length-1);
+    for (int i = 0; i < G_context.bip32_path.length-1; i++) {
+        parent_path[i] = G_context.bip32_path.path[i];
+    }
     derive_private_key(&private_key, chain_code, parent_path, G_context.bip32_path.length - 1);
     init_public_key(&private_key, &public_key);
 

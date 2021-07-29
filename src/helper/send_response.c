@@ -15,7 +15,7 @@ int helper_send_response_xpub() {
     memmove(resp+offset, G_context.pk_info.raw_public_key, PUBKEY_LEN);
     offset += PUBKEY_LEN;
     memmove(resp+offset, G_context.pk_info.chain_code, CHAINCODE_LEN);
-    resp[offset++] = CHAINCODE_LEN;
+    offset += CHAINCODE_LEN;
     memmove(resp + offset, G_context.pk_info.fingerprint, 4);
     offset += 4;
 
