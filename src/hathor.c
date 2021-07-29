@@ -13,14 +13,6 @@
 // Path prefix of 44'/280'
 const uint32_t htr_bip44[] = { 44 | 0x80000000, HATHOR_BIP44_CODE | 0x80000000 };
 
-void init_bip32_full_path(const uint32_t *in, uint8_t inlen, uint32_t *out) {
-    out[0] = htr_bip44[0];
-    out[1] = htr_bip44[1];
-    for (int i = 0; i < inlen; i++) {
-        out[2+i] = in[i];
-    }
-}
-
 void sha256d(uint8_t *in, size_t inlen, uint8_t *out) {
     cx_sha256_t hash;
     uint8_t buffer[32];
@@ -75,17 +67,14 @@ void derive_private_key(cx_ecfp_private_key_t *private_key,
                         uint8_t chain_code[static 32],
                         const uint32_t *bip32_path,
                         uint8_t bip32_path_len) {
-    uint32_t full_path[2+bip32_path_len];
     uint8_t raw_private_key[32] = {0};
-
-    init_bip32_full_path(bip32_path, bip32_path_len, full_path);
 
     BEGIN_TRY {
         TRY {
             // derive the seed with 44'/280'/$(bip32_path)
             os_perso_derive_node_bip32(CX_CURVE_256K1,
-                                       full_path,
-                                       2+bip32_path_len,
+                                       bip32_path,
+                                       bip32_path_len,
                                        raw_private_key,
                                        chain_code);
             // new private_key from raw

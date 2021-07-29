@@ -174,13 +174,11 @@ int ui_display_xpub_confirm() {
         G_context.state = STATE_NONE;
         return io_send_sw(SW_BAD_STATE);
     }
-    uint32_t full_path[MAX_BIP32_PATH];
-    init_bip32_full_path(G_context.bip32_path.path, G_context.bip32_path.length, full_path);
 
     memset(g_bip32_path, 0, sizeof(g_bip32_path));
 
-    if (!bip32_path_format(full_path,
-                           2+G_context.bip32_path.length,
+    if (!bip32_path_format(G_context.bip32_path.path,
+                           G_context.bip32_path.length,
                            g_bip32_path,
                            sizeof(g_bip32_path))) {
         return io_send_sw(SW_DISPLAY_BIP32_PATH_FAIL);
@@ -214,13 +212,11 @@ int ui_display_confirm_address() {
         G_context.state = STATE_NONE;
         return io_send_sw(SW_BAD_STATE);
     }
-    uint32_t full_path[MAX_BIP32_PATH];
-    init_bip32_full_path(G_context.bip32_path.path, G_context.bip32_path.length, full_path);
 
     memset(g_bip32_path, 0, sizeof(g_bip32_path));
 
-    if (!bip32_path_format(full_path,
-                           2+G_context.bip32_path.length,
+    if (!bip32_path_format(G_context.bip32_path.path,
+                           G_context.bip32_path.length,
                            g_bip32_path,
                            sizeof(g_bip32_path))) {
         return io_send_sw(SW_DISPLAY_BIP32_PATH_FAIL);

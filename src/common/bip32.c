@@ -8,8 +8,7 @@
 #include "read.h"
 
 bool bip32_path_read(const uint8_t *in, size_t in_len, bip32_path_t *out) {
-    // We prefix purpose and coin type levels when we derive, so we should remove 2 from max allowed
-    if (in_len < 1 || in[0] < 2 || in[0] > (MAX_BIP32_PATH - 2) || in[0] * 4 + 1 > in_len ) {
+    if (in_len < 1 || in[0] > MAX_BIP32_PATH || in[0] * 4 + 1 > in_len ) {
         return false;
     }
     size_t offset = 0;
@@ -22,8 +21,8 @@ bool bip32_path_read(const uint8_t *in, size_t in_len, bip32_path_t *out) {
         }
         out->path[i] = read_u32_be(in, offset);
         if ((out->path[i] & 0x7FFFFFFF) > MAX_DERIVATION_INDEX) {
-            // we will not allow derivations past 255
-            // or 255' which is why we ignore the first bit
+            // we will not allow derivations past MAX_DERIVATION_INDEX
+            // or MAX_DERIVATION_INDEX' which is why we ignore the first bit
             return false;
         }
         offset += 4;

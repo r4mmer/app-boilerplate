@@ -9,8 +9,6 @@
 
 extern const uint32_t htr_bip44[2];
 
-void init_bip32_full_path(const uint32_t *in, uint8_t inlen, uint32_t *out);
-
 /**
  * Performs the sha256d (double sha256) of the data
  * 
