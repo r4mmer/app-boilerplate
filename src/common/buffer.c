@@ -51,7 +51,6 @@ bool buffer_peek_u8(buffer_t *buffer, uint8_t *value) {
     }
 
     *value = buffer->ptr[buffer->offset];
-    buffer_seek_cur(buffer, 1);
 
     return true;
 }
@@ -73,8 +72,6 @@ bool buffer_peek_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness)
 
     *value = ((endianness == BE) ? read_u16_be(buffer->ptr, buffer->offset)
                                  : read_u16_le(buffer->ptr, buffer->offset));
-
-    buffer_seek_cur(buffer, 2);
 
     return true;
 }

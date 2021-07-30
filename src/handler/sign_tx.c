@@ -56,21 +56,21 @@ void read_change_output_info(buffer_t *cdata) {
         if (!buffer_read_u8(cdata, &G_context.tx_info.change_output_index)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
-    }
-    // the remainder of the first byte was used to represent the bip32 path length of the change path
-    buffer[0] = tmp & 0x0F;
-    if(buffer[0] > MAX_BIP32_PATH || !buffer_move(cdata, buffer+1, 4*buffer[0])) {
-        THROW(SW_WRONG_DATA_LENGTH);
-    }
+        // the remainder of the first byte was used to represent the bip32 path length of the change path
+        buffer[0] = tmp & 0x0F;
+        if(buffer[0] > MAX_BIP32_PATH || !buffer_move(cdata, buffer+1, 4*buffer[0])) {
+            THROW(SW_WRONG_DATA_LENGTH);
+        }
 
-    buffer_t bufdata = {
-        .ptr = buffer,
-        .size=(size_t) ( 1 + ( 4 * buffer[0] ) ),
-        .offset = 0
-    };
+        buffer_t bufdata = {
+            .ptr = buffer,
+            .size=(size_t) ( 1 + ( 4 * buffer[0] ) ),
+            .offset = 0
+        };
 
-    // buffer holds the serialized bip32 path that was read from cdata
-    if (!buffer_read_bip32_path(&bufdata, &G_context.tx_info.change_bip32_path)) THROW(SW_WRONG_DATA_LENGTH);
+        // buffer holds the serialized bip32 path that was read from cdata
+        if (!buffer_read_bip32_path(&bufdata, &G_context.tx_info.change_bip32_path)) THROW(SW_WRONG_DATA_LENGTH);
+    }
 }
 
 void read_tx_data(buffer_t *cdata) {
@@ -151,8 +151,8 @@ void _decode_next_element() {
         }
         // we require input to have no data, since we are signing all data received (sighash_all must have no data)
         // other than this check, we can ignore the input
-        uint16_t input_val = read_u16_be(G_context.tx_info.buffer, 33);
-        if (input_val>0) {
+        uint16_t input_data_len = read_u16_be(G_context.tx_info.buffer, 33);
+        if (input_data_len > 0) {
             THROW(TX_STATE_ERR);
         }
         // reading input
@@ -317,7 +317,6 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
 }
 
 int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
-
     // switch(stage) actions for each stage
     // - SIGN_TX_STAGE_DONE: signals the end of the call
     // - SIGN_TX_STAGE_SIGN: TX was received and approved by user, caller requests signing
@@ -340,7 +339,7 @@ int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
                 return io_send_sw(SW_WRONG_DATA_LENGTH);
             }
 
-            // TODO: sign with input key and return SW_OK
+            // sign with input key and return SW_OK
             if(!sign_tx_with_key()) return -1;
             break;
 

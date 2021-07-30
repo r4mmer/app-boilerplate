@@ -17,8 +17,12 @@
  * P2PKH scripts have the format:
  *   [OP_DUP, OP_HASH160, pubkey_hash_len, pubkey_hash, OP_EQUALVERIFY, OP_CHECKSIG]
  */
-void validate_p2pkh_script(buffer_t *in) {
+void validate_p2pkh_script(buffer_t *in, size_t script_len) {
     uint8_t p2pkh[] = {OP_DUP, OP_HASH160, PUBKEY_HASH_LEN, OP_EQUALVERIFY, OP_CHECKSIG};
+    if (script_len != 25) {
+        THROW(SW_WRONG_DATA_LENGTH);
+    }
+
     if (in->size - in->offset < 25) {
         THROW(SW_TX_PARSING_FAIL);
     }
@@ -58,9 +62,8 @@ size_t parse_output(uint8_t *in, size_t inlen, tx_output_t *output) {
         )) {
             THROW(SW_TX_PARSING_FAIL); // or wrong data length?
         }
-
     // validate script and extract pubkey hash
-    validate_p2pkh_script(&buf);
+    validate_p2pkh_script(&buf, script_len);
     // validate already asserted the length for this extraction
     memmove(output->pubkey_hash, buf.ptr + buf.offset + 3, PUBKEY_HASH_LEN);
     if(!buffer_seek_cur(&buf, script_len)) {
