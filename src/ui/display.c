@@ -119,7 +119,7 @@ int ui_display_tx_output(action_validate_cb cb) {
     uint8_t address[ADDRESS_LEN] = {0};
     address_from_pubkey_hash(G_context.tx_info.decoded_output.pubkey_hash, address);
     base58_encode(address, ADDRESS_LEN, b58address, B58_ADDRESS_LEN);
-    snprintf(g_address, sizeof(g_address), "%.*H", sizeof(b58address), b58address);
+    memmove(g_address, b58address, sizeof(b58address));
 
     // set g_ammount (HTR value)
     memset(g_amount, 0, sizeof(g_amount));
@@ -214,6 +214,7 @@ int ui_display_confirm_address() {
     }
 
     memset(g_bip32_path, 0, sizeof(g_bip32_path));
+    memset(g_address, 0, sizeof(g_address));
 
     if (!bip32_path_format(G_context.bip32_path.path,
                            G_context.bip32_path.length,
@@ -222,20 +223,24 @@ int ui_display_confirm_address() {
         return io_send_sw(SW_DISPLAY_BIP32_PATH_FAIL);
     }
 
-    memset(g_address, 0, sizeof(g_address));
+    cx_ecfp_private_key_t private_key = {0};
+    cx_ecfp_public_key_t public_key = {0};
+    uint8_t chain_code[32];
+
     uint8_t address[ADDRESS_LEN] = {0};
     char b58address[B58_ADDRESS_LEN] = {0};
-    // hash raw_public_key
-    uint8_t buffer[20] = {0};
-    // compress_public_key
-    uint8_t compressed_pubkey[65];
-    memmove(compressed_pubkey, G_context.pk_info.raw_public_key, 65);
-    compress_public_key(compressed_pubkey);
-    // hash160
-    hash160(compressed_pubkey, 33, buffer);
-    address_from_pubkey_hash(buffer, address);
+
+    // derive for bip32 path
+    derive_private_key(&private_key, chain_code, G_context.bip32_path.path, G_context.bip32_path.length);
+    init_public_key(&private_key, &public_key);
+
+    // Generate address from public key
+    address_from_pubkey(&public_key, address);
     base58_encode(address, ADDRESS_LEN, b58address, B58_ADDRESS_LEN);
-    snprintf(g_address, sizeof(g_address), "%.*H", sizeof(b58address), b58address);
+    memmove(g_address, b58address, sizeof(b58address));
+
+    explicit_bzero(&private_key, sizeof(private_key));
+    explicit_bzero(&public_key, sizeof(public_key));
 
     g_validate_callback = &ui_action_confirm_address;
 

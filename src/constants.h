@@ -18,7 +18,7 @@
 /**
  * B58 encoded address length
  */
-#define B58_ADDRESS_LEN 34
+#define B58_ADDRESS_LEN 35
 
 /**
  * Token UID length

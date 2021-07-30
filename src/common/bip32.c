@@ -20,7 +20,7 @@ bool bip32_path_read(const uint8_t *in, size_t in_len, bip32_path_t *out) {
             return false;
         }
         out->path[i] = read_u32_be(in, offset);
-        if ((out->path[i] & 0x7FFFFFFF) > MAX_DERIVATION_INDEX) {
+        if ((out->path[i] & 0x7FFFFFFFu) > MAX_DERIVATION_INDEX) {
             // we will not allow derivations past MAX_DERIVATION_INDEX
             // or MAX_DERIVATION_INDEX' which is why we ignore the first bit
             return false;
