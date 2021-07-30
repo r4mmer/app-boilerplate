@@ -96,7 +96,8 @@ UX_FLOW(ux_display_tx_output_flow,
         &ux_display_address_step,       // address
         &ux_display_amount_step,        // HTR <value>
         &ux_display_approve_step,       // accept => decode next component and redisplay if needed
-        &ux_display_reject_step);       // reject => return error
+        &ux_display_reject_step,        // reject => return error
+        FLOW_LOOP);
 
 int ui_display_tx_output(action_validate_cb cb) {
     // set g_output_index
@@ -138,9 +139,10 @@ int ui_display_tx_output(action_validate_cb cb) {
  *  #3 screen : reject button
  */
 UX_FLOW(ux_display_confirm_tx_flow,
-        &ux_display_confirm_sign_step,  // -> <eye> Send Transaction?
-        &ux_display_approve_step,       // -> return SW_OK
-        &ux_display_reject_step);       // -> return reject
+        &ux_display_confirm_sign_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step,
+        FLOW_LOOP);
 
 int ui_display_tx_confirm() {
     if (G_context.req_type != CONFIRM_TRANSACTION || G_context.state != STATE_PARSED) {
@@ -164,10 +166,11 @@ int ui_display_tx_confirm() {
  *  #4 screen: reject button
  */
 UX_FLOW(ux_display_xpub_flow,
-        &ux_display_confirm_step,  // <eye> Confirm Access?
-        &ux_display_path_step,          // bip32 path
-        &ux_display_approve_step,       // accept => send xpub in response
-        &ux_display_reject_step);       // reject => return error
+        &ux_display_confirm_step,
+        &ux_display_path_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step,
+        FLOW_LOOP);
 
 int ui_display_xpub_confirm() {
     if (G_context.req_type != CONFIRM_XPUB || G_context.state != STATE_NONE) {
@@ -201,11 +204,12 @@ int ui_display_xpub_confirm() {
  *  #5 screen: reject button
  */
 UX_FLOW(ux_display_address_flow,
-        &ux_display_confirm_addr_step,  // <eye> Confirm Address
-        &ux_display_path_step,          // bip32 path
-        &ux_display_address_step,       // address
-        &ux_display_approve_step,       // accept => return ok
-        &ux_display_reject_step);       // reject => return error
+        &ux_display_confirm_addr_step,
+        &ux_display_path_step,
+        &ux_display_address_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step,
+        FLOW_LOOP);
 
 int ui_display_confirm_address() {
     if (G_context.req_type != CONFIRM_ADDRESS || G_context.state != STATE_NONE) {
