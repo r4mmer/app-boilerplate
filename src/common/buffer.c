@@ -43,7 +43,7 @@ bool buffer_seek_end(buffer_t *buffer, size_t offset) {
     return true;
 }
 
-bool buffer_peek_u8(buffer_t *buffer, uint8_t *value) {
+bool buffer_read_u8(buffer_t *buffer, uint8_t *value) {
     if (!buffer_can_read(buffer, 1)) {
         *value = 0;
 
@@ -51,19 +51,12 @@ bool buffer_peek_u8(buffer_t *buffer, uint8_t *value) {
     }
 
     *value = buffer->ptr[buffer->offset];
-
-    return true;
-}
-
-bool buffer_read_u8(buffer_t *buffer, uint8_t *value) {
-    if (!buffer_peek_u8(buffer, value)) return false;
-    
     buffer_seek_cur(buffer, 1);
 
     return true;
 }
 
-bool buffer_peek_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness) {
+bool buffer_read_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness) {
     if (!buffer_can_read(buffer, 2)) {
         *value = 0;
 
@@ -72,13 +65,6 @@ bool buffer_peek_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness)
 
     *value = ((endianness == BE) ? read_u16_be(buffer->ptr, buffer->offset)
                                  : read_u16_le(buffer->ptr, buffer->offset));
-
-    return true;
-}
-
-bool buffer_read_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness) {
-    if (!buffer_peek_u16(buffer, value, endianness)) return false;
-
     buffer_seek_cur(buffer, 2);
 
     return true;

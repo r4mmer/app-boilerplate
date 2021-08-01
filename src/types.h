@@ -92,8 +92,12 @@ typedef struct {
     uint8_t outputs_len;
 
     // type of decoded element
-    uint8_t elem_type;
+    // uint8_t elem_type;
     uint8_t current_output;
+    uint8_t display_index;
+    uint8_t confirmed_outputs;
+    uint8_t buffer_output_index;
+    tx_output_t outputs[10]; // max num of outputs on a call is 7
     tx_output_t decoded_output;
 } sign_tx_ctx_t;
 

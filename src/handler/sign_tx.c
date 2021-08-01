@@ -14,18 +14,18 @@
 #include "../ui/display.h"
 #include "../ui/menu.h"
 #include "../common/buffer.h"
+#include "../common/bip32.h"
 #include "../common/read.h"
 #include "../transaction/types.h"
 #include "../transaction/deserialize.h"
 
-
-bool verify_address(tx_output_t output, uint32_t *bip32_path, uint8_t bip32_len) {
+bool verify_address(tx_output_t output, bip32_path_t bip32) {
     uint8_t hash[PUBKEY_HASH_LEN];
     cx_ecfp_public_key_t public_key;
     cx_ecfp_private_key_t private_key;
     uint8_t chain_code[32];
 
-    derive_private_key(&private_key, chain_code, bip32_path, bip32_len);
+    derive_private_key(&private_key, chain_code, bip32.path, bip32.length);
     init_public_key(&private_key, &public_key);
     compress_public_key(public_key.W);
     hash160(public_key.W, 33, hash);
@@ -81,10 +81,6 @@ void read_tx_data(buffer_t *cdata) {
         // if an error occurs reading
         THROW(SW_WRONG_DATA_LENGTH);
     }
-
-    if (G_context.tx_info.outputs_len > MAX_NUM_TX_OUTPUTS) {
-        THROW(SW_TX_PARSING_FAIL);
-    }
 }
 
 void sighash_all_hash(buffer_t *cdata) {
@@ -97,7 +93,6 @@ void sighash_all_hash(buffer_t *cdata) {
         cdata->size - cdata->offset,        // Length of input data
         NULL, 0);                           // output (if flag CX_LAST was set)
 }
-
 
 bool sign_tx_with_key() {
     // the bip32 path and bip32 path length should be on the global context when calling this method.
@@ -129,7 +124,21 @@ bool sign_tx_with_key() {
     return io_send_response(&(const buffer_t){.ptr = out, .size = sig_size, .offset = 0}, SW_OK) >= 0;
 }
 
-void _decode_next_element() {
+void init_sign_tx_ctx() {
+    explicit_bzero(&G_context, sizeof(G_context));
+    G_context.req_type = CONFIRM_TRANSACTION; /// SIGN_TX
+
+    G_context.tx_info.buffer_len = 0;
+    G_context.tx_info.confirmed_outputs = 0;
+    G_context.state = STATE_RECV_DATA;
+    G_context.tx_info.has_change_output = false;
+    G_context.tx_info.current_output = 0;
+
+    cx_sha256_init(&G_context.tx_info.sha256);
+    G_context.tx_info.sighash_all[0] = '\0';
+}
+
+void _decode_elements() {
     // test if there are more tokens, inputs and outputs in this order
     // if there are, try to read from buffer
     // if any are incomplete, inform caller to send more data 
@@ -142,7 +151,7 @@ void _decode_next_element() {
         // for now we ignore it
         G_context.tx_info.remaining_tokens--;
         G_context.tx_info.buffer_len -= TOKEN_UID_LEN;
-        G_context.tx_info.elem_type = ELEM_TOKEN_UID;
+        // G_context.tx_info.elem_type = ELEM_TOKEN_UID;
         memmove(G_context.tx_info.buffer, G_context.tx_info.buffer + TOKEN_UID_LEN, G_context.tx_info.buffer_len);
     } else if(G_context.tx_info.remaining_inputs > 0) {
         // can read input?
@@ -155,61 +164,51 @@ void _decode_next_element() {
         if (input_data_len > 0) {
             THROW(TX_STATE_ERR);
         }
+
         // reading input
         G_context.tx_info.remaining_inputs--;
         G_context.tx_info.buffer_len -= TX_INPUT_LEN;
-        G_context.tx_info.elem_type = ELEM_INPUT;
+        // G_context.tx_info.elem_type = ELEM_INPUT;
         memmove(G_context.tx_info.buffer, G_context.tx_info.buffer + TX_INPUT_LEN, G_context.tx_info.buffer_len);
     } else if (G_context.tx_info.current_output < G_context.tx_info.outputs_len) {
+        tx_output_t output = {0};
+
         // read output
-        size_t output_len = parse_output(G_context.tx_info.buffer, G_context.tx_info.buffer_len, &G_context.tx_info.decoded_output);
-        G_context.tx_info.decoded_output.index = G_context.tx_info.current_output;
-        G_context.tx_info.elem_type = ELEM_OUTPUT;
+        size_t output_len = parse_output(
+            G_context.tx_info.buffer,
+            G_context.tx_info.buffer_len,
+            &output);
+
+        output.index = G_context.tx_info.current_output++;
+        // G_context.tx_info.elem_type = ELEM_OUTPUT;
+
+        if (G_context.tx_info.has_change_output && G_context.tx_info.change_output_index == output.index) {
+            if (!verify_address(output, G_context.bip32_path)) {
+                THROW(TX_STATE_ERR);
+            }
+        }
         // move buffer
         G_context.tx_info.buffer_len -= output_len;
-        memmove(G_context.tx_info.buffer, G_context.tx_info.buffer + output_len, output_len); 
-        G_context.tx_info.current_output++;
+        memmove(G_context.tx_info.buffer, G_context.tx_info.buffer + output_len, G_context.tx_info.buffer_len);
+        G_context.tx_info.outputs[G_context.tx_info.buffer_output_index++] =  output;
     } else {
-        // we reached the end of the data we should read, the buffer should be empty
-        // if the buffer is not empty something went wrong
-        if (G_context.tx_info.buffer_len > 0) {
-            THROW(TX_STATE_ERR);
-        }
-        THROW(TX_STATE_FINISHED);
+        // We've reached the end of what we should read but the buffer isn't empty
+        THROW(SW_TX_PARSING_FAIL);
     }
 
-    switch (G_context.tx_info.elem_type)
-    {
-    case ELEM_TOKEN_UID:
-        // not displaying token uid
-        break;
-    case ELEM_INPUT:
-        // not displaying inputs
-        break;
-    case ELEM_OUTPUT:
-        // check if this is the change output
-        if (
-            G_context.tx_info.has_change_output &&
-            G_context.tx_info.change_output_index == G_context.tx_info.decoded_output.index) {
-                // verify change
-                if (!verify_address(
-                    G_context.tx_info.decoded_output,
-                    G_context.tx_info.change_bip32_path.path,
-                    G_context.tx_info.change_bip32_path.length)) {
-                    THROW(TX_STATE_ERR);
-                }
-        } else {
-            THROW(TX_STATE_READY);
-        }
-        break;
+    if (G_context.tx_info.buffer_len == 0) {
+        THROW(TX_STATE_PARTIAL);
     }
 }
 
-tx_decoder_state_e decode_next_element() {
+tx_decoder_state_e decode_elements() {
     volatile tx_decoder_state_e result;
     BEGIN_TRY {
         TRY {
-            for (;;) _decode_next_element();
+            for (;;) _decode_elements();
+        }
+        CATCH(SW_TX_PARSING_FAIL) {
+            THROW(SW_TX_PARSING_FAIL);
         }
         CATCH_OTHER(e) {
             result = e;
@@ -219,51 +218,6 @@ tx_decoder_state_e decode_next_element() {
     }
     END_TRY;
     return result;
-}
-
-// Callback of button to confirm current decoded_output
-// Will decode and display next if ready
-void confirm_tx_cb(bool choice) {
-    if (!choice) {
-        // cancel everything if user denies an output
-        explicit_bzero(&G_context, sizeof(G_context));
-        io_send_sw(SW_DENY);
-        return;
-    }
-    // decode next output and redisplay
-    switch (decode_next_element())
-    {
-    case TX_STATE_ERR:
-        io_send_sw(SW_INVALID_TX);
-        explicit_bzero(&G_context, sizeof(G_context));
-        ui_menu_main();
-        return;
-    case TX_STATE_PARTIAL:
-        // request more data with SW_OK
-        // THROW(SW_OK);
-        io_send_sw(SW_OK);
-        return;
-    case TX_STATE_READY:
-        // display new decoded_output
-        ui_display_tx_output(&confirm_tx_cb);
-        return;
-    case TX_STATE_FINISHED:
-        ui_display_tx_confirm();
-        return;
-    }
-}
-
-void init_sign_tx_ctx() {
-    explicit_bzero(&G_context, sizeof(G_context));
-    G_context.req_type = CONFIRM_TRANSACTION; /// SIGN_TX
-
-    G_context.tx_info.buffer_len = 0;
-    G_context.state = STATE_RECV_DATA;
-    G_context.tx_info.has_change_output = false;
-    G_context.tx_info.current_output = 0;
-
-    cx_sha256_init(&G_context.tx_info.sha256);
-    G_context.tx_info.sighash_all[0] = '\0';
 }
 
 bool receive_data(buffer_t *cdata, uint8_t chunk) {
@@ -282,36 +236,36 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
         sighash_all_hash(cdata);
         read_tx_data(cdata);
 
-        if(!buffer_move(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
+        if(!buffer_copy(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
-        G_context.tx_info.buffer_len = cdata->size - cdata->offset;
+
+        G_context.tx_info.buffer_len += cdata->size - cdata->offset;
     } else {
         // copy sighash_all data to sha256 context
         sighash_all_hash(cdata);
         // move the same data to decode buffer
-        if(!buffer_move(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
+        if(!buffer_copy(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
         G_context.tx_info.buffer_len += cdata->size - cdata->offset;
     }
 
-    switch (decode_next_element())
-    {
-    case TX_STATE_ERR:
-        io_send_sw(SW_INVALID_TX);
-        explicit_bzero(&G_context, sizeof(G_context));
-        ui_menu_main();
-        return true;
-    case TX_STATE_PARTIAL:
-        // request more data with SW_OK
-        THROW(SW_OK);
-    case TX_STATE_READY:
-        ui_display_tx_output(&confirm_tx_cb);
-        return true;
-    case TX_STATE_FINISHED:
-        ui_display_tx_confirm();
-        return true;
+    switch (decode_elements()) {
+        case TX_STATE_ERR:
+            THROW(SW_WRONG_P1P2);
+            explicit_bzero(&G_context, sizeof(G_context));
+            io_send_sw(SW_INVALID_TX);
+            ui_menu_main();
+            return true;
+        case TX_STATE_PARTIAL:
+            if (G_context.tx_info.current_output == 0) {
+                // some error ocurred on the first output
+                THROW(SW_TX_PARSING_FAIL);
+            }
+            // validate parsed outputs and return sw_ok upon user confirmation
+            // if the last output was reached, confirm the transaction send.
+            return ui_display_tx_outputs() == 0;
     }
     return false;
 }
@@ -321,11 +275,14 @@ int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
     // - SIGN_TX_STAGE_DONE: signals the end of the call
     // - SIGN_TX_STAGE_SIGN: TX was received and approved by user, caller requests signing
     // - SIGN_TX_STAGE_DATA: Receiving TX in chunks
+    G_context.tx_info.display_index = 0;
+    G_context.tx_info.buffer_output_index = 0;
     switch (stage) {
         case SIGN_TX_STAGE_DONE:
             // Caller is done with this request, cleanup and return SW_OK.
             explicit_bzero(&G_context, sizeof(G_context));
             G_context.state = STATE_NONE;
+            ui_menu_main();
             return io_send_sw(SW_OK);
 
         case SIGN_TX_STAGE_SIGN:
@@ -347,6 +304,7 @@ int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
             // Caller will pass the transaction and metadata needed to approve and sign.
             if (G_context.state == STATE_APPROVED) {
                 // cannot receive more data after user approval
+                explicit_bzero(&G_context, sizeof(G_context));
                 ui_menu_main();
                 return io_send_sw(SW_BAD_STATE);
             }

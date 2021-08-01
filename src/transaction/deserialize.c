@@ -10,6 +10,7 @@
 // #include "../common/read.h"
 #include "constants.h"
 #include "../common/buffer.h"
+#include "types.h"
 
 /**
  * XXX: considering only P2PKH, without timelock
@@ -20,33 +21,37 @@
 void validate_p2pkh_script(buffer_t *in, size_t script_len) {
     uint8_t p2pkh[] = {OP_DUP, OP_HASH160, PUBKEY_HASH_LEN, OP_EQUALVERIFY, OP_CHECKSIG};
     if (script_len != 25) {
-        THROW(SW_WRONG_DATA_LENGTH);
-    }
-
-    if (in->size - in->offset < 25) {
         THROW(SW_TX_PARSING_FAIL);
     }
 
-    if (memcmp(p2pkh, in->ptr, 3) != 0 || memcmp(p2pkh+3, in->ptr + PUBKEY_HASH_LEN + 3, 2) != 0) {
+    if (in->size - in->offset < 25) {
+        THROW(TX_STATE_PARTIAL);
+    }
+
+    if (memcmp(p2pkh, in->ptr + in->offset, 3) != 0 || memcmp(p2pkh+3, in->ptr + in->offset + PUBKEY_HASH_LEN + 3, 2) != 0) {
         THROW(SW_TX_PARSING_FAIL);
     }
 }
 
 void parse_output_value(buffer_t *buf, uint64_t *value) {
     // if first bit is 1 value has length 8 bytes, otherwise it's 4 bytes 
-    bool flag = (bool)(0x80 & buf->ptr[0]);
+    bool flag = (bool)(0x80u & buf->ptr[0]);
     if (flag) {
         uint64_t tmp = 0;
-        buffer_read_u64(buf, &tmp, BE);
+        if(!buffer_read_u64(buf, &tmp, BE)) {
+            THROW(TX_STATE_PARTIAL);
+        }
         // To use the first bit to indicate length of 8 bytes
         // we serialized the negative value of the 8 byte int so we need to correct it
         tmp = (-1)*tmp;
         *value = tmp;
     } else {
         uint32_t tmp = 0;
-        buffer_read_u32(buf, &tmp, BE);
+        if(!buffer_read_u32(buf, &tmp, BE)) {
+            THROW(TX_STATE_PARTIAL);
+        }
         // we don't need to correct anything 
-        *value = tmp;
+        *value = (uint64_t) tmp;
     }
 }
 
@@ -60,7 +65,7 @@ size_t parse_output(uint8_t *in, size_t inlen, tx_output_t *output) {
         buffer_read_u8(&buf, &output->token_data) &&
         buffer_read_u16(&buf, &script_len, BE)
         )) {
-            THROW(SW_TX_PARSING_FAIL); // or wrong data length?
+            THROW(TX_STATE_PARTIAL);
         }
     // validate script and extract pubkey hash
     validate_p2pkh_script(&buf, script_len);

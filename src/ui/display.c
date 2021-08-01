@@ -14,6 +14,7 @@
 #include "../sw.h"
 #include "action/validate.h"
 #include "../common/format.h"
+#include "menu.h"
 
 #include "../hathor.h"
 
@@ -25,6 +26,20 @@ static char g_bip32_path[60];
 static char g_output_index[10];
 static char g_address[B58_ADDRESS_LEN];
 
+
+void action_exit_to_menu() {
+    explicit_bzero(&G_context, sizeof(G_context));
+    ui_menu_main();
+}
+
+UX_STEP_NOCB(ux_display_processing_step,
+             pb,
+             {
+                 &C_icon_processing,
+                 "Processing",
+             });
+
+UX_STEP_VALID(ux_sendtx_exit_step, pb, action_exit_to_menu(), {&C_icon_crossmark, "Quit"});
 
 // Step with title/text for BIP32 path
 UX_STEP_NOCB(ux_display_path_step,
@@ -90,47 +105,20 @@ UX_STEP_NOCB(ux_display_confirm_step,
                  "access?",
              });
 
-// sign_tx confirm output
-UX_FLOW(ux_display_tx_output_flow,
-        &ux_display_review_output_step, // Output <curr>/<total>
-        &ux_display_address_step,       // address
-        &ux_display_amount_step,        // HTR <value>
-        &ux_display_approve_step,       // accept => decode next component and redisplay if needed
-        &ux_display_reject_step,        // reject => return error
-        FLOW_LOOP);
+UX_FLOW(ux_display_processing, &ux_display_processing_step, &ux_sendtx_exit_step);
 
-int ui_display_tx_output(action_validate_cb cb) {
-    // set g_output_index
-    uint8_t total_outputs = G_context.tx_info.outputs_len;
-    uint8_t fake_output_index = G_context.tx_info.decoded_output.index + 1;
-    if (G_context.tx_info.has_change_output) {
-        total_outputs--;
-        if (G_context.tx_info.decoded_output.index > G_context.tx_info.change_output_index) {
-            fake_output_index--;
-        }
+void ui_action_tx_confirm(bool choice) {
+    if (choice) {
+        G_context.state = STATE_APPROVED;
+        io_send_sw(SW_OK);
+        ux_flow_init(0, ux_display_processing, NULL);
+        return;
+    } else {
+        explicit_bzero(&G_context, sizeof(G_context));
+        io_send_sw(SW_DENY);
     }
-    itoa(fake_output_index, g_output_index, 10);
-    uint8_t len = strlen(g_output_index);
-    g_output_index[len++] = '/';
-    itoa(total_outputs, g_output_index+len, 10);
 
-    // set g_address
-    memset(g_address, 0, sizeof(g_address));
-    char b58address[B58_ADDRESS_LEN] = {0};
-    uint8_t address[ADDRESS_LEN] = {0};
-    address_from_pubkey_hash(G_context.tx_info.decoded_output.pubkey_hash, address);
-    base58_encode(address, ADDRESS_LEN, b58address, B58_ADDRESS_LEN);
-    memmove(g_address, b58address, sizeof(b58address));
-
-    // set g_ammount (HTR value)
-    memset(g_amount, 0, sizeof(g_amount));
-    strcpy(g_amount, "HTR ");
-    format_value(G_context.tx_info.decoded_output.value, g_amount+4);
-
-    g_validate_callback = cb; // decode and show next until need more
-    ux_flow_init(0, ux_display_tx_output_flow, NULL);
-
-    return 0;
+    ui_menu_main();
 }
 
 /* FLOW to display confirm sign tx:
@@ -146,13 +134,92 @@ UX_FLOW(ux_display_confirm_tx_flow,
 
 int ui_display_tx_confirm() {
     if (G_context.req_type != CONFIRM_TRANSACTION || G_context.state != STATE_PARSED) {
-        G_context.state = STATE_NONE;
-        return io_send_sw(SW_BAD_STATE);
+        explicit_bzero(&G_context, sizeof(G_context));
+        io_send_sw(SW_BAD_STATE);
+        ui_menu_main();
+    } else {
+        g_validate_callback = &ui_action_tx_confirm; // set state_approved and send sw_ok
+        ux_flow_init(0, ux_display_confirm_tx_flow, NULL);
     }
 
-    g_validate_callback = &ui_action_tx_confirm; // set state_approved and send sw_ok
+    return 0;
+}
 
-    ux_flow_init(0, ux_display_confirm_tx_flow, NULL);
+// sign_tx confirm output
+UX_FLOW(ux_display_tx_output_flow,
+        &ux_display_review_output_step, // Output <curr>/<total>
+        &ux_display_address_step,       // address
+        &ux_display_amount_step,        // HTR <value>
+        &ux_display_approve_step,       // accept => decode next component and redisplay if needed
+        &ux_display_reject_step,        // reject => return error
+        FLOW_LOOP);
+
+void prepare_display_output() {
+    tx_output_t output = G_context.tx_info.outputs[G_context.tx_info.display_index];
+
+    // set g_output_index
+    uint8_t total_outputs = G_context.tx_info.outputs_len;
+    uint8_t fake_output_index = output.index + 1;
+    if (G_context.tx_info.has_change_output) {
+        total_outputs--;
+        if (output.index > G_context.tx_info.change_output_index) {
+            fake_output_index--;
+        }
+    }
+    itoa(fake_output_index, g_output_index, 10);
+    uint8_t len = strlen(g_output_index);
+    g_output_index[len++] = '/';
+    itoa(total_outputs, g_output_index+len, 10);
+
+    // set g_address
+    memset(g_address, 0, sizeof(g_address));
+    char b58address[B58_ADDRESS_LEN] = {0};
+    uint8_t address[ADDRESS_LEN] = {0};
+    address_from_pubkey_hash(output.pubkey_hash, address);
+    base58_encode(address, ADDRESS_LEN, b58address, B58_ADDRESS_LEN);
+    memmove(g_address, b58address, sizeof(b58address));
+
+    // set g_ammount (HTR value)
+    memset(g_amount, 0, sizeof(g_amount));
+    strcpy(g_amount, "HTR ");
+    format_fpu64(g_amount+4, sizeof(g_amount)-5, output.value, 2);
+}
+
+void ui_confirm_output(bool choice) {
+    if (choice) {
+        G_context.tx_info.display_index++;
+        G_context.tx_info.confirmed_outputs++;
+        if (G_context.tx_info.has_change_output && G_context.tx_info.confirmed_outputs == G_context.tx_info.change_output_index) {
+            G_context.tx_info.display_index++;
+            G_context.tx_info.confirmed_outputs++;
+        }
+        if (G_context.tx_info.confirmed_outputs == G_context.tx_info.outputs_len) {
+            // G_context.state = STATE_APPROVED;
+            // io_send_sw(SW_OK);
+            G_context.state = STATE_PARSED;
+            ui_display_tx_confirm();
+            return;
+        }
+        if (G_context.tx_info.display_index == G_context.tx_info.buffer_output_index) {
+            G_context.tx_info.buffer_output_index = 0;
+            G_context.tx_info.display_index = 0;
+            io_send_sw(SW_OK);
+            // processing?
+            ui_menu_main();
+            return;
+        }
+        ui_display_tx_outputs();
+    } else {
+        explicit_bzero(&G_context, sizeof(G_context));
+        io_send_sw(SW_DENY);
+        ui_menu_main();
+    }
+}
+
+int ui_display_tx_outputs() {
+    prepare_display_output();
+    g_validate_callback = &ui_confirm_output; // show next until need more
+    ux_flow_init(0, ux_display_tx_output_flow, NULL);
 
     return 0;
 }

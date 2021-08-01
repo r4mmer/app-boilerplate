@@ -7,6 +7,7 @@
 #include "../types.h"
 #include "../ui/display.h"
 #include "common/buffer.h"
+#include "../hathor.h"
 
 void derive_address() {
     cx_ecfp_private_key_t private_key = {0};

@@ -38,4 +38,4 @@
 /**
  * Maximum number of outputs on a transaction.
  */
-#define MAX_NUM_TX_OUTPUTS 100
+#define MAX_NUM_TX_OUTPUTS 255
