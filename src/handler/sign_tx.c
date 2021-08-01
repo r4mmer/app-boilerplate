@@ -245,7 +245,7 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
         // copy sighash_all data to sha256 context
         sighash_all_hash(cdata);
         // move the same data to decode buffer
-        if(!buffer_copy(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
+        if(!buffer_copy(cdata, G_context.tx_info.buffer + G_context.tx_info.buffer_len, cdata->size - cdata->offset)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
         G_context.tx_info.buffer_len += cdata->size - cdata->offset;

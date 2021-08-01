@@ -204,7 +204,6 @@ void ui_confirm_output(bool choice) {
             G_context.tx_info.buffer_output_index = 0;
             G_context.tx_info.display_index = 0;
             io_send_sw(SW_OK);
-            // processing?
             ui_menu_main();
             return;
         }
