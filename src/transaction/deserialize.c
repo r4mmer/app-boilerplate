@@ -25,7 +25,7 @@ void validate_p2pkh_script(buffer_t *in, size_t script_len) {
     }
 
     if (in->size - in->offset < 25) {
-        THROW(TX_STATE_PARTIAL);
+        THROW(TX_STATE_READY);
     }
 
     if (memcmp(p2pkh, in->ptr + in->offset, 3) != 0 || memcmp(p2pkh+3, in->ptr + in->offset + PUBKEY_HASH_LEN + 3, 2) != 0) {
@@ -39,7 +39,7 @@ void parse_output_value(buffer_t *buf, uint64_t *value) {
     if (flag) {
         uint64_t tmp = 0;
         if(!buffer_read_u64(buf, &tmp, BE)) {
-            THROW(TX_STATE_PARTIAL);
+            THROW(TX_STATE_READY);
         }
         // To use the first bit to indicate length of 8 bytes
         // we serialized the negative value of the 8 byte int so we need to correct it
@@ -48,7 +48,7 @@ void parse_output_value(buffer_t *buf, uint64_t *value) {
     } else {
         uint32_t tmp = 0;
         if(!buffer_read_u32(buf, &tmp, BE)) {
-            THROW(TX_STATE_PARTIAL);
+            THROW(TX_STATE_READY);
         }
         // we don't need to correct anything 
         *value = (uint64_t) tmp;
@@ -65,7 +65,7 @@ size_t parse_output(uint8_t *in, size_t inlen, tx_output_t *output) {
         buffer_read_u8(&buf, &output->token_data) &&
         buffer_read_u16(&buf, &script_len, BE)
         )) {
-            THROW(TX_STATE_PARTIAL);
+            THROW(TX_STATE_READY);
         }
     // validate script and extract pubkey hash
     validate_p2pkh_script(&buf, script_len);

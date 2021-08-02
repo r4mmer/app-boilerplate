@@ -104,21 +104,6 @@ bool buffer_read_u8(buffer_t *buffer, uint8_t *value);
 bool buffer_read_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness);
 
 /**
- * Peek 2 bytes from buffer into uint16_t. (Does not move buffer offset)
- *
- * @param[in,out]  buffer
- *   Pointer to input buffer struct.
- * @param[out]     value
- *   Pointer to 16-bit unsigned integer read from buffer.
- * @param[in]      endianness
- *   Either BE (Big Endian) or LE (Little Endian).
- *
- * @return true if success, false otherwise.
- *
- */
-bool buffer_peek_u16(buffer_t *buffer, uint16_t *value, endianness_t endianness);
-
-/**
  * Read 4 bytes from buffer into uint32_t.
  *
  * @param[in,out]  buffer

@@ -19,6 +19,10 @@
 #include "../transaction/types.h"
 #include "../transaction/deserialize.h"
 
+/**
+ * Verify that the given output address (pubkey hash) is ours and
+ * may be generated from by deriving on the given bip32 path
+ **/
 bool verify_address(tx_output_t output, bip32_path_t bip32) {
     uint8_t hash[PUBKEY_HASH_LEN];
     cx_ecfp_public_key_t public_key;
@@ -39,6 +43,18 @@ bool verify_address(tx_output_t output, bip32_path_t bip32) {
     return memcmp(hash, output.pubkey_hash, PUBKEY_HASH_LEN) == 0;
 }
 
+/**
+ * Read change information
+ *
+ * first byte:
+ *  - 1 bit for the boolean `has_change_output`
+ *  - the change address bip32 path length is the unsigned 7 bit integer (cast to 8 bit)
+ * if `has_change_output` is true:
+ *  - 1 byte for change output index
+ *  - read the bip32 path (length was read on the first byte)
+ *
+ * The output will be on the global context for sign tx (`tx_info`)
+ **/
 void read_change_output_info(buffer_t *cdata) {
     uint8_t buffer[MAX_BIP32_PATH * 4 + 1] = {0};
     uint8_t tmp;
@@ -73,6 +89,20 @@ void read_change_output_info(buffer_t *cdata) {
     }
 }
 
+/**
+ * Read the info needed to parse the sighash_all data
+ *
+ * 2 bytes for tx version
+ * - 1 : HTR Transaction (Only supported version, currently)
+ *
+ * 1 byte for number of tokens
+ * 1 byte for number of inputs
+ * 1 byte for number of outputs
+ *
+ * Obs: This is only on the first call with chunk=0, so it should never fail for lack of data
+ *
+ * The output will be on the global context for sign tx (`tx_info`)
+ **/
 void read_tx_data(buffer_t *cdata) {
     if (!(buffer_read_u16(cdata, &G_context.tx_info.tx_version, BE) && // read version bytes (Big Endian)
         buffer_read_u8(cdata, &G_context.tx_info.remaining_tokens) && // read number of tokens, inputs and outputs, respectively
@@ -83,6 +113,10 @@ void read_tx_data(buffer_t *cdata) {
     }
 }
 
+/**
+ * Add all of the input (buffer_t) to the sighash_all buffer
+ * Does not move the input offset
+ **/
 void sighash_all_hash(buffer_t *cdata) {
     // cx_hash returns the size of the hash after adding the data, we can safely ignore it
 
@@ -94,6 +128,11 @@ void sighash_all_hash(buffer_t *cdata) {
         NULL, 0);                           // output (if flag CX_LAST was set)
 }
 
+/**
+ * Sign sighash_all with given bip32 path derived private key and send the signature
+ *
+ * If sighash_all is empty it means that we need to sha256d the given data to initialize it
+ **/
 bool sign_tx_with_key() {
     // the bip32 path and bip32 path length should be on the global context when calling this method.
 
@@ -124,6 +163,9 @@ bool sign_tx_with_key() {
     return io_send_response(&(const buffer_t){.ptr = out, .size = sig_size, .offset = 0}, SW_OK) >= 0;
 }
 
+/**
+ * Clean and initialize the global context for the SIGN_TX command.
+ **/
 void init_sign_tx_ctx() {
     explicit_bzero(&G_context, sizeof(G_context));
     G_context.req_type = CONFIRM_TRANSACTION; /// SIGN_TX
@@ -138,7 +180,22 @@ void init_sign_tx_ctx() {
     G_context.tx_info.sighash_all[0] = '\0';
 }
 
-void _decode_elements() {
+/**
+ * Decode the elements from the sighash_all data
+ *
+ * - tokens
+ *   - currently no validation is done here
+ * - inputs
+ *   - currently no validation is done here
+ * - outputs
+ *   - parse and validate
+ *   - if it's the change, verify the pubkey hash of the output
+ *   - once all the buffer for this call is parsed
+ *      throw TX_STATE_READY: will start the ux flow to confirm the outputs
+ *
+ * @return true if there is more data left on the buffer to decode, false otherwise.
+ **/
+bool _decode_elements() {
     // test if there are more tokens, inputs and outputs in this order
     // if there are, try to read from buffer
     // if any are incomplete, inform caller to send more data 
@@ -146,7 +203,7 @@ void _decode_elements() {
         // can read token?
         if (G_context.tx_info.buffer_len < TOKEN_UID_LEN) {
             // still decoding tokens, but this one was divided between calls 
-            THROW(TX_STATE_PARTIAL);
+            THROW(TX_STATE_READY);
         }
         // for now we ignore it
         G_context.tx_info.remaining_tokens--;
@@ -156,7 +213,7 @@ void _decode_elements() {
     } else if(G_context.tx_info.remaining_inputs > 0) {
         // can read input?
         if (G_context.tx_info.buffer_len < TX_INPUT_LEN) {
-            THROW(TX_STATE_PARTIAL);
+            THROW(TX_STATE_READY);
         }
         // we require input to have no data, since we are signing all data received (sighash_all must have no data)
         // other than this check, we can ignore the input
@@ -193,22 +250,39 @@ void _decode_elements() {
         G_context.tx_info.outputs[G_context.tx_info.buffer_output_index++] =  output;
     } else {
         // We've reached the end of what we should read but the buffer isn't empty
-        THROW(SW_TX_PARSING_FAIL);
+        THROW(TX_STATE_ERR);
     }
 
-    if (G_context.tx_info.buffer_len == 0) {
-        THROW(TX_STATE_PARTIAL);
-    }
+    // Is there more data to parse?
+    return G_context.tx_info.buffer_len != 0;
 }
 
+/**
+ * A try/catch context for parsing the received data
+ *
+ * The actual decode element function will be called
+ * indefinetely until something is thrown, an element
+ * should be parsed on each call
+ *
+ * Obs: any error thrown in this context will be ignored
+ *      except for SW_TX_PARSING_FAIL and the expected tx_decoder_state_e
+ *      in case of a SW_TX_PARSING_FAIL, TX_STATE_ERR will be returned
+ *
+ * @return state of parsed buffer
+ **/
 tx_decoder_state_e decode_elements() {
     volatile tx_decoder_state_e result;
     BEGIN_TRY {
         TRY {
-            for (;;) _decode_elements();
+            // for (;;) _decode_elements();
+            while (_decode_elements()) {
+                ;
+            }
+            // No more data to decode on this buffer.
+            result = TX_STATE_READY;
         }
         CATCH(SW_TX_PARSING_FAIL) {
-            THROW(SW_TX_PARSING_FAIL);
+            result = TX_STATE_ERR;
         }
         CATCH_OTHER(e) {
             result = e;
@@ -220,6 +294,13 @@ tx_decoder_state_e decode_elements() {
     return result;
 }
 
+/**
+ * Handler for SIGN_TX first stage
+ *
+ * Initialize context if first call, read and parse the data
+ * Should start the UX_FLOW if the user confirmation is required
+ *
+ **/
 bool receive_data(buffer_t *cdata, uint8_t chunk) {
     // The transaction will be divided into chunks of data
     // each chunk will be numbered, chunk==0 means this is the start of the data.
@@ -243,6 +324,8 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
         G_context.tx_info.buffer_len += cdata->size - cdata->offset;
     } else {
         // copy sighash_all data to sha256 context
+        // any call on the data stage after the first must be part of the sighash_all
+        // add it to the buffer and parse the elements
         sighash_all_hash(cdata);
         // move the same data to decode buffer
         if(!buffer_copy(cdata, G_context.tx_info.buffer + G_context.tx_info.buffer_len, cdata->size - cdata->offset)) {
@@ -253,19 +336,29 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
 
     switch (decode_elements()) {
         case TX_STATE_ERR:
-            THROW(SW_WRONG_P1P2);
             explicit_bzero(&G_context, sizeof(G_context));
             io_send_sw(SW_INVALID_TX);
             ui_menu_main();
             return true;
-        case TX_STATE_PARTIAL:
-            if (G_context.tx_info.current_output == 0) {
-                // some error ocurred on the first output
-                THROW(SW_TX_PARSING_FAIL);
+        case TX_STATE_READY:
+            if (G_context.tx_info.buffer_output_index != 0) {
+                // We have an output for the user to confirm.
+                // Validate parsed outputs and return sw_ok upon user confirmation
+                // if the last output was reached, confirm the transaction send.
+                return ui_display_tx_outputs() == 0;
+            } else {
+                if (G_context.tx_info.current_output != 0) {
+                    // if we start decoding tx outputs every call will have outputs
+                    // XXX: re-evaluate this if implementing Multisig
+                    io_send_sw(SW_INVALID_TX);
+                    return false;
+                }
+                // We don't have an output to confirm
+                // Occurs when there's too many tokens/inputs
+                // return SW_OK to request more data
+                io_send_sw(SW_OK);
+                return true;
             }
-            // validate parsed outputs and return sw_ok upon user confirmation
-            // if the last output was reached, confirm the transaction send.
-            return ui_display_tx_outputs() == 0;
     }
     return false;
 }
@@ -304,6 +397,13 @@ int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
             // Caller will pass the transaction and metadata needed to approve and sign.
             if (G_context.state == STATE_APPROVED) {
                 // cannot receive more data after user approval
+                explicit_bzero(&G_context, sizeof(G_context));
+                ui_menu_main();
+                return io_send_sw(SW_BAD_STATE);
+            }
+            if (chunk > 0 && G_context.state != STATE_RECV_DATA) {
+                // Some stage before this failed but caller sent data anyway
+                // reject with SW_BAD_STATE
                 explicit_bzero(&G_context, sizeof(G_context));
                 ui_menu_main();
                 return io_send_sw(SW_BAD_STATE);
