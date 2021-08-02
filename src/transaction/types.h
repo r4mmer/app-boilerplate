@@ -11,8 +11,6 @@
 typedef enum {
     TX_STATE_ERR = 1,
     TX_STATE_PARTIAL = 2,
-    TX_STATE_READY = 3,
-    TX_STATE_FINISHED = 4,
 } tx_decoder_state_e;
 
 typedef enum {

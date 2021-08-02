@@ -11,7 +11,7 @@ typedef void (*action_validate_cb)(bool);
  * Show user the parsed outputs to confirm
  * When all outputs are confirmed, show tx confirm flow
 */
-int ui_display_tx_output(void);
+int ui_display_tx_outputs(void);
 
 /**
  * Ask the user to confirm sending the transaction
