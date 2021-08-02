@@ -3,8 +3,10 @@
 #include "../common/buffer.h"
 
 /**
- * Handler for GET_APP_NAME command. Send APDU response with ASCII
- * encoded name of the application.
+ * Handler for CONFIRM_ADDRESS command.
+ *
+ * We receive the desired bip32 path
+ * we derive and show the user the address to confirm.
  *
  * @param[in] cdata
  *   Buffer with data from caller.

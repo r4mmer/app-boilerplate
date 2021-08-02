@@ -27,6 +27,9 @@ static char g_output_index[10];
 static char g_address[B58_ADDRESS_LEN];
 
 
+/**
+ * Clean context and return to menu.
+*/
 void action_exit_to_menu() {
     explicit_bzero(&G_context, sizeof(G_context));
     ui_menu_main();
@@ -105,8 +108,16 @@ UX_STEP_NOCB(ux_display_confirm_step,
                  "access?",
              });
 
+// Display a "Processing" message and allow user to stop processing and quit to menu
 UX_FLOW(ux_display_processing, &ux_display_processing_step, &ux_sendtx_exit_step);
 
+/**
+ * User confirms to sign tx
+ * we enter an approved state where the caller can request the signature of the received data
+ *
+ * @param[in]  choice
+ *   A boolean representing wether the user confirmed or not.
+*/
 void ui_action_tx_confirm(bool choice) {
     if (choice) {
         G_context.state = STATE_APPROVED;
@@ -145,7 +156,7 @@ int ui_display_tx_confirm() {
     return 0;
 }
 
-// sign_tx confirm output
+// SIGN_TX: confirm output
 UX_FLOW(ux_display_tx_output_flow,
         &ux_display_review_output_step, // Output <curr>/<total>
         &ux_display_address_step,       // address
@@ -154,6 +165,9 @@ UX_FLOW(ux_display_tx_output_flow,
         &ux_display_reject_step,        // reject => return error
         FLOW_LOOP);
 
+/**
+ * Prepare the UX screen values of the current output to confirm
+*/
 void prepare_display_output() {
     tx_output_t output = G_context.tx_info.outputs[G_context.tx_info.display_index];
 

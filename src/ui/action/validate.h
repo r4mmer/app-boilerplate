@@ -2,6 +2,20 @@
 
 #include <stdbool.h>  // bool
 
+/**
+ * Action to take on user interaction on GET_XPUB call.
+ *
+ * @param[in] choice
+ *   Wether user has confirmed.
+ *
+ */
+void ui_action_confirm_xpub(bool choice);
 
-void ui_action_confirm_xpub(bool choive);
-void ui_action_confirm_address(bool choive);
+/**
+ * Action to take on GET_XPUB call
+ *
+ * @param[in] choice
+ *   Wether user has confirmed.
+ *
+ */
+void ui_action_confirm_address(bool choice);

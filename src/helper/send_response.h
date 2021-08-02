@@ -13,4 +13,7 @@
  */
 #define CHAINCODE_LEN (MEMBER_SIZE(xpub_ctx_t, chain_code))
 
+/**
+ * Senx xpub data from the public key derived by the app.
+*/
 int helper_send_response_xpub(void);
