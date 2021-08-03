@@ -56,7 +56,6 @@ bool verify_address(tx_output_t output, bip32_path_t bip32) {
  * The output will be on the global context for sign tx (`tx_info`)
  **/
 void read_change_output_info(buffer_t *cdata) {
-    uint8_t buffer[MAX_BIP32_PATH * 4 + 1] = {0};
     uint8_t tmp;
 
     // 1 byte for has_change_output and bip32 path len
@@ -65,27 +64,37 @@ void read_change_output_info(buffer_t *cdata) {
     }
 
     // The first bit indicates the existence of a change output
-    G_context.tx_info.has_change_output = (bool) tmp & 0x80;
+    G_context.tx_info.has_change_output = (tmp & 0x80) > 0 ? true : false;
 
     if (G_context.tx_info.has_change_output) {
+        uint8_t buffer[1 + 4*MAX_BIP32_PATH] = {0};
+        buffer[0] = tmp & 0x0F;
         // 1 byte for change output index
         if (!buffer_read_u8(cdata, &G_context.tx_info.change_output_index)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
+
         // the remainder of the first byte was used to represent the bip32 path length of the change path
-        buffer[0] = tmp & 0x0F;
-        if(buffer[0] > MAX_BIP32_PATH || !buffer_move(cdata, buffer+1, 4*buffer[0])) {
+        if (buffer[0] > MAX_BIP32_PATH) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
 
+        if (cdata->size - cdata->offset < 4*buffer[0]) {
+            THROW(SW_WRONG_DATA_LENGTH);
+        }
+        memmove(buffer+1, cdata->ptr + cdata->offset, 4 * buffer[0]);
+        buffer_seek_cur(cdata, 4*buffer[0]);
+
         buffer_t bufdata = {
             .ptr = buffer,
-            .size=(size_t) ( 1 + ( 4 * buffer[0] ) ),
+            .size=1 + 4*MAX_BIP32_PATH,
             .offset = 0
         };
 
         // buffer holds the serialized bip32 path that was read from cdata
-        if (!buffer_read_bip32_path(&bufdata, &G_context.tx_info.change_bip32_path)) THROW(SW_WRONG_DATA_LENGTH);
+        if (!buffer_read_bip32_path(&bufdata, &G_context.tx_info.change_bip32_path)) {
+            THROW(SW_WRONG_DATA_LENGTH);
+        }
     }
 }
 
@@ -307,6 +316,7 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
     if (chunk == 0) {
         if (G_context.state == STATE_RECV_DATA) {
             // sent first chunk twice? return error
+            explicit_bzero(&G_context, sizeof(G_context));
             THROW(SW_BAD_STATE);
         }
 
@@ -317,7 +327,7 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
         sighash_all_hash(cdata);
         read_tx_data(cdata);
 
-        if(!buffer_copy(cdata, G_context.tx_info.buffer, cdata->size - cdata->offset)) {
+        if(!buffer_copy(cdata, G_context.tx_info.buffer, 300 - G_context.tx_info.buffer_len)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
 
@@ -328,7 +338,7 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
         // add it to the buffer and parse the elements
         sighash_all_hash(cdata);
         // move the same data to decode buffer
-        if(!buffer_copy(cdata, G_context.tx_info.buffer + G_context.tx_info.buffer_len, cdata->size - cdata->offset)) {
+        if(!buffer_copy(cdata, G_context.tx_info.buffer + G_context.tx_info.buffer_len, 300 - G_context.tx_info.buffer_len)) {
             THROW(SW_WRONG_DATA_LENGTH);
         }
         G_context.tx_info.buffer_len += cdata->size - cdata->offset;
@@ -347,12 +357,6 @@ bool receive_data(buffer_t *cdata, uint8_t chunk) {
                 // if the last output was reached, confirm the transaction send.
                 return ui_display_tx_outputs() == 0;
             } else {
-                if (G_context.tx_info.current_output != 0) {
-                    // if we start decoding tx outputs every call will have outputs
-                    // XXX: re-evaluate this if implementing Multisig
-                    io_send_sw(SW_INVALID_TX);
-                    return false;
-                }
                 // We don't have an output to confirm
                 // Occurs when there's too many tokens/inputs
                 // return SW_OK to request more data
@@ -412,6 +416,7 @@ int handler_sign_tx(buffer_t *cdata, sing_tx_stage_e stage, uint8_t chunk) {
             break;
 
         default:
+            explicit_bzero(&G_context, sizeof(G_context));
             ui_menu_main();
             return io_send_sw(SW_BAD_STATE);
     }
