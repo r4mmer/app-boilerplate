@@ -169,6 +169,12 @@ UX_FLOW(ux_display_tx_output_flow,
  * Prepare the UX screen values of the current output to confirm
 */
 void prepare_display_output() {
+
+    if (G_context.tx_info.has_change_output && G_context.tx_info.confirmed_outputs == G_context.tx_info.change_output_index) {
+        G_context.tx_info.display_index++;
+        G_context.tx_info.confirmed_outputs++;
+    }
+
     tx_output_t output = G_context.tx_info.outputs[G_context.tx_info.display_index];
 
     // set g_output_index

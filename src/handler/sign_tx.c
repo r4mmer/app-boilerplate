@@ -23,13 +23,13 @@
  * Verify that the given output address (pubkey hash) is ours and
  * may be generated from by deriving on the given bip32 path
  **/
-bool verify_address(tx_output_t output, bip32_path_t bip32) {
-    uint8_t hash[PUBKEY_HASH_LEN];
-    cx_ecfp_public_key_t public_key;
-    cx_ecfp_private_key_t private_key;
+bool verify_address(tx_output_t output, bip32_path_t path) {
+    uint8_t hash[PUBKEY_HASH_LEN] = {0};
+    cx_ecfp_public_key_t public_key = {0};
+    cx_ecfp_private_key_t private_key = {0};
     uint8_t chain_code[32];
 
-    derive_private_key(&private_key, chain_code, bip32.path, bip32.length);
+    derive_private_key(&private_key, chain_code, path.path, path.length);
     init_public_key(&private_key, &public_key);
     compress_public_key(public_key.W);
     hash160(public_key.W, 33, hash);
@@ -37,7 +37,6 @@ bool verify_address(tx_output_t output, bip32_path_t bip32) {
     // erase data
     explicit_bzero(&private_key, sizeof(private_key));
     explicit_bzero(&public_key, sizeof(public_key));
-    explicit_bzero(&chain_code, sizeof(chain_code));
 
     // 0 means equals
     return memcmp(hash, output.pubkey_hash, PUBKEY_HASH_LEN) == 0;
@@ -249,7 +248,7 @@ bool _decode_elements() {
         // G_context.tx_info.elem_type = ELEM_OUTPUT;
 
         if (G_context.tx_info.has_change_output && G_context.tx_info.change_output_index == output.index) {
-            if (!verify_address(output, G_context.bip32_path)) {
+            if (!verify_address(output, G_context.tx_info.change_bip32_path)) {
                 THROW(TX_STATE_ERR);
             }
         }
