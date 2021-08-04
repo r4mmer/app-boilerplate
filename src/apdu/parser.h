@@ -1,8 +1,8 @@
 #pragma once
 
-#include <stddef.h>   // size_t
-#include <stdint.h>   // uint*_t
-#include <stdbool.h>  // bool
+#include <stdbool.h> // bool
+#include <stddef.h>  // size_t
+#include <stdint.h>  // uint*_t
 
 #include "../types.h"
 

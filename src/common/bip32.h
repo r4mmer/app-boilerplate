@@ -5,14 +5,6 @@
 #include <stdbool.h>  // bool
 
 /**
- * Maximum derivation index to use.
- * Should allow:
- * 0  - MAX_DERIVATION_INDEX
- * 0' - MAX_DERIVATION_INDEX'
-*/
-#define MAX_DERIVATION_INDEX 512
-
-/**
  * Maximum length of BIP32 path allowed.
  * 
  * m/purpose'/coin'/acct'/change/index
